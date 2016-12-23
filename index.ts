@@ -1,5 +1,4 @@
 import * as fs from 'fs'
-import * as  _ from 'lodash';
 import { Mock, Random } from 'mockjs';
 import { argv } from 'yargs';
 import { TableInfo } from './TableInfoModel';
@@ -13,9 +12,9 @@ let {s, d} = argv;
 //     throw `'${s}' is not exist.`;
 // }
 
-// if (!d) {
-//     d = './output.sql';
-// }
+if (!d) {
+    d = './bin/output.sql';
+}
 
 let tableInfos: Array<TableInfo> = [
     {
@@ -25,7 +24,7 @@ let tableInfos: Array<TableInfo> = [
             { key: 'name', mock: () => Random.cname(), idx: 1 }
         ],
         primary: 'id',
-        mockNum: 10
+        mockNum: 1000
     },
     {
         tableName: 'post',
@@ -37,7 +36,7 @@ let tableInfos: Array<TableInfo> = [
             { key: 'content', mock: () => Random.paragraph(2, 5), idx: 4 }
         ],
         primary: 'id',
-        mockNum: 10
+        mockNum: 1000
     },
     {
         tableName: 'comment',
@@ -48,7 +47,7 @@ let tableInfos: Array<TableInfo> = [
             { key: 'content', mock: () => Random.paragraph(2, 5), idx: 3 }
         ],
         primary: 'id',
-        mockNum: 10
+        mockNum: 1000
     }
 ];
 
@@ -120,16 +119,18 @@ function getColumnIdx(tableName: string, columnKey: string) {
     return v;
 }
 
+// 生成表数据
+console.time('genDatas');
 let allData = genTableDatas();
+console.timeEnd('genDatas');
 
 Object.keys(allData).forEach(tableName => {
     let tb = tableInfos.find(v => v.tableName === tableName);
     let columStr = tb.columns.map(col => col.key).join(',');
-
     let sql = `insert into ${tableName}(${columStr}) values \n`;
 
-
-    sql += allData[tableName].map(row => '(' + row.map(val => (typeof val !== 'number' ? '\'' + val + '\'' : val)).join(',') + ')').join(',\n') + ';';
-
-    console.log(sql);
+    sql += allData[tableName].map(row => '(' + row.map(val => (typeof val !== 'number' ? '\'' + val + '\'' : val)).join(',') + ')').join(',\n') + ';\n\n';
+    fs.appendFile(d, sql, (err) => {
+        console.log(err);
+    });
 });

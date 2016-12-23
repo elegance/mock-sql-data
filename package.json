@@ -4,14 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node bin ", 
+    "test": "node bin ",
     "watch": "tsc -p .\tsconfig.json -w"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "lodash": "^4.17.2",
     "mkpath": "^1.0.0",
     "mockjs": "^1.0.1-beta3",
     "yargs": "^6.5.0"
