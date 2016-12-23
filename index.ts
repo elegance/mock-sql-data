@@ -1,7 +1,8 @@
 import * as fs from 'fs'
-import Mock = require('mockjs');
+import * as  _ from 'lodash';
+import { Mock, Random } from 'mockjs';
 import { argv } from 'yargs';
-import { TableInfo , DataType} from './TableInfoModel';
+import { TableInfo } from './TableInfoModel';
 
 let {s, d} = argv;
 
@@ -20,73 +21,115 @@ let tableInfos: Array<TableInfo> = [
     {
         tableName: 'author',
         columns: [
-            { key: 'id', type: DataType.number, presision: 0 },
-            { key: 'name', type: DataType.string }
+            { key: 'id', mock: () => Random.increment(), idx: 0 },
+            { key: 'name', mock: () => Random.cname(), idx: 1 }
         ],
-        primary: 'id'
+        primary: 'id',
+        mockNum: 10
     },
     {
         tableName: 'post',
         columns: [
-            { key: 'id', type: DataType.number, presision: 0 },
-            { key: 'authorId' },
-            { key: 'title', type: DataType.string },
-            { key: 'created', type: DataType.datetime },
-            { key: 'content', type: DataType.string }
+            { key: 'id', mock: () => Random.increment(), idx: 0 },
+            { key: 'authorId', forgin: { table: 'author', key: 'id' }, idx: 1 },
+            { key: 'title', mock: () => Random.title(), idx: 2 },
+            { key: 'created', mock: () => Random.datetime(), idx: 3 },
+            { key: 'content', mock: () => Random.paragraph(2, 5), idx: 4 }
         ],
         primary: 'id',
-        forginKey: {
-            key: 'author_id',
-            ref: {
-                table: 'author',
-                key: 'id'
-            }
-        }
+        mockNum: 10
     },
     {
         tableName: 'comment',
         columns: [
-            { key: 'id', type: 'number', presision: 0 },
-            { key: 'postId' },
-            { key: 'created', type: 'datetime' },
-            { key: 'content', type: 'string' }
+            { key: 'id', mock: () => Random.increment(), idx: 0 },
+            { key: 'postId', forgin: { table: 'post', key: 'id' }, idx: 1 },
+            { key: 'created', mock: () => Random.datetime(), idx: 2 },
+            { key: 'content', mock: () => Random.paragraph(2, 5), idx: 3 }
         ],
         primary: 'id',
-        forginKey: {
-            key: 'postId',
-            ref: {
-                table: 'post',
-                key: 'id'
-            }
-        }
+        mockNum: 10
     }
 ];
 
-let tbs = tableInfos.find(v => v.tableName === 'comment');
-console.log(typeof tbs)
+// 遍历集合
+function genTableDatas() {
+    let finishDatas = {};
 
-// // 遍历集合
-// tableInfos.forEach(table => {
-//     genTableData(table, []);
-// });
+    tableInfos.forEach(table => {
+        genTableData(table, finishDatas);
+    });
+    return finishDatas;
+}
 
-// // // 生成单个表数据
-// function genTableData(tableInfo: TableInfo, finishTables: Array<string>) {
-//     if (finishTables.indexOf(tableInfo.tableName) !== -1) {
-//         return;
-//     }
+// // 生成单个表数据
+function genTableData(tableInfo: TableInfo, finishDatas: Object) {
+    if (!finishDatas[tableInfo.tableName]) {
+        finishDatas[tableInfo.tableName] = [];
+    }
+    let curData: Array<Object> = finishDatas[tableInfo.tableName];
 
-//     // 取 是否依赖关系表，
-//     let forginKey = tableInfo.forginKey;
+    if (curData.length > 0) {
+        return;
+    }
 
-//     if(forginKey && finishTables.indexOf(forginKey.ref.table) === -1) { // 如果有依赖，并且依赖的table并未在finishTables中
-//         let tbs = tableInfos.find(v => v.tableName === forginKey.ref.table);
-//         // genTableData()
-//     }
-// }
+    // 取 是否依赖关系表
+    let forginTables: Array<string> = [];
+    tableInfo.columns.filter(col => col.forgin).forEach(col => forginTables.push(col.forgin.table));
 
-// // let data = Mock.mock({
-// //     'list|1-10': [{
-// //         'id|+1': 1
-// //     }]
-// // });
+    // 遍历依赖表
+    forginTables.forEach(tableName => {
+        if (!finishDatas[tableName]) { //依赖表还未生成
+            let tb = tableInfos.find(v => v.tableName === tableName);
+            genTableData(tb, finishDatas); //递归先生成依赖表
+        }
+    });
+
+    // 生成列数据
+    for (let i = 0; i < tableInfo.mockNum; i++) {
+        let data = tableInfo.columns.map((col) => {
+            if (col.forgin) {
+                let refDatas: Array<Object> = finishDatas[col.forgin.table];
+
+                return refDatas[Random.integer(0, refDatas.length - 1)][getColumnIdx(col.forgin.table, col.forgin.key)];
+            } else {
+                return col.mock();
+            }
+        })
+        curData.push(data);
+    }
+}
+
+/**
+ * 缓存 表中列的索引
+ */
+let cacheMap: Map<string, number> = new Map();
+
+/**
+ * 获取表列的索引
+ */
+function getColumnIdx(tableName: string, columnKey: string) {
+    let cacheKey = tableName + '.' + columnKey;
+    let v = cacheMap.get(cacheKey);
+
+    if (typeof v !== 'number') {
+        let refTb = tableInfos.find(v => v.tableName === tableName);
+        v = refTb.columns.find(v => v.key === columnKey).idx;
+        cacheMap.set(cacheKey, v);
+    }
+    return v;
+}
+
+let allData = genTableDatas();
+
+Object.keys(allData).forEach(tableName => {
+    let tb = tableInfos.find(v => v.tableName === tableName);
+    let columStr = tb.columns.map(col => col.key).join(',');
+
+    let sql = `insert into ${tableName}(${columStr}) values \n`;
+
+
+    sql += allData[tableName].map(row => '(' + row.map(val => (typeof val !== 'number' ? '\'' + val + '\'' : val)).join(',') + ')').join(',\n') + ';';
+
+    console.log(sql);
+});
